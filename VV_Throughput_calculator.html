@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Volume Validation Throughput Calculator</title>
+<style>
+    body { font-family: Arial, sans-serif; background: white; color: #003366; padding: 20px;}
+    h1 { text-align: center; color: #005bbb;}
+    table { width: 100%; border-collapse: collapse; margin-top: 25px; font-size: 15px; }
+    th { background: #005bbb; color: white; padding: 10px; border: 1px solid #004a99; }
+    td { border: 1px solid #005bbb; padding: 8px; text-align: center;}
+    input[type="number"] { width: 70px; padding: 5px; text-align: center; border: 1px solid #005bbb; border-radius: 5px; }
+    .yellow { background: #ffdd55; }
+    .green { background: #a8e6a1; font-weight: bold; }
+    .button { margin: 20px 10px 20px 0; display: inline-block; padding: 10px 20px; background: #005bbb; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; }
+    .rowtoggle { margin: 0 20px 0 0; }
+    #chartContainer { width: 98%; margin: 25px auto; }
+</style>
+<!-- SheetJS for Excel export -->
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<!-- Chart.js for trend chart -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<h1>Volume Validation Throughput Calculator</h1>
+<button class="button" onclick="calculate()">Calculate</button>
+<button class="button" onclick="exportToExcel()">Export to Excel</button>
+<button class="button" onclick="drawTrendChart()">Draw Trend Chart</button>
+
+<!-- Row toggles -->
+<div>
+    <label class="rowtoggle">
+        <input type="checkbox" id="togglePlatform" checked onchange="toggleRow(1)"> Show VV Platforms
+    </label>
+    <label class="rowtoggle">
+        <input type="checkbox" id="toggleMax" checked onchange="toggleRow(2)"> Show Max Test Lines
+    </label>
+    <label class="rowtoggle">
+        <input type="checkbox" id="toggleActual" checked onchange="toggleRow(3)"> Show Actual Test Lines (60%)
+    </label>
+    <label class="rowtoggle">
+        <input type="checkbox" id="toggleRamp" checked onchange="toggleRow(4)"> Show Cumulative Ramp-Up
+    </label>
+</div>
+
+<table id="vvTable">
+    <tr>
+      <th>Work Week</th>
+      <!-- WW columns auto-generated -->
+    </tr>
+    <tr>
+      <td><b>VV Platforms</b></td>
+    </tr>
+    <tr>
+      <td><b>Max Test Lines</b></td>
+    </tr>
+    <tr>
+      <td><b>Actual Test Lines (60%)</b></td>
+    </tr>
+    <tr>
+      <td><b>Cumulative Ramp-Up</b></td>
+    </tr>
+</table>
+
+<div id="chartContainer" style="display:none">
+    <canvas id="trendChart"></canvas>
+</div>
+
+<script>
+const weeks = 14;
+window.onload = function () {
+    const table = document.getElementById("vvTable");
+    const rows = table.rows;
+    for (let i = 1; i <= weeks; i++) {
+        const th = document.createElement("th");
+        th.innerText = "WW" + String(i).padStart(2, '0');
+        rows[0].appendChild(th);
+    }
+    for (let i = 1; i <= weeks; i++) {
+        let cell = document.createElement("td");
+        cell.innerHTML = `<input type='number' id='plat${i}' min='0' value='0'>`;
+        rows[1].appendChild(cell);
+    }
+    for (let r = 2; r < 5; r++) {
+        for (let i = 1; i <= weeks; i++) {
+            let cell = document.createElement("td");
+            rows[r].appendChild(cell);
+        }
+    }
+    calculate(); // Initialize chart and table
+};
+
+function calculate() {
+    const table = document.getElementById("vvTable");
+    const maxTL = table.rows[2];
+    const actualTL = table.rows[3];
+    const ramp = table.rows[4];
+    let cumulative = 0;
+    for (let i = 1; i <= weeks; i++) {
+        actualTL.cells[i].className = "";
+        ramp.cells[i].className = "";
+        let platforms = parseInt(document.getElementById("plat"+i).value) || 0;
+        let max = platforms * 4 * 7;
+        maxTL.cells[i].innerText = max;
+        let actual = Math.round(max * 0.6);
+        actualTL.cells[i].innerText = actual;
+        actualTL.cells[i].classList.add("yellow");
+        cumulative += actual;
+        ramp.cells[i].innerText = cumulative;
+        ramp.cells[i].classList.add("yellow");
+        if (actual >= 1400) actualTL.cells[i].classList.add("green");
+    }
+}
+
+function toggleRow(idx) {
+    document.getElementById('vvTable').rows[idx].style.display =
+        document.getElementById(['togglePlatform','toggleMax','toggleActual','toggleRamp'][idx-1]).checked ? '' : 'none';
+}
+
+function exportToExcel() {
+    var table = document.getElementById("vvTable");
+    var data = [];
+    for(let i=0; i<table.rows.length; i++) {
+        // Only export visible rows
+        if(table.rows[i].style.display === "none") continue;
+        let row = [];
+        for(let j=0; j<table.rows[i].cells.length; j++) {
+            let cell = table.rows[i].cells[j];
+            if (i==1 && j>0) {
+                let inp = cell.querySelector('input');
+                row.push(inp ? inp.value : cell.innerText);
+            } else {
+                row.push(cell.innerText);
+            }
+        }
+        data.push(row);
+    }
+    var ws = XLSX.utils.aoa_to_sheet(data);
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "VV Throughput");
+    XLSX.writeFile(wb, "VV_Throughput.xlsx");
+}
+
+// Draw chart using Chart.js
+function drawTrendChart() {
+    calculate(); // to refresh cumulative
+    const ramp = document.getElementById('vvTable').rows[4];
+    const weeksLabels = [];
+    const rampData = [];
+    for(let i=1; i<=weeks; i++) {
+        weeksLabels.push("WW"+String(i).padStart(2,'0'));
+        rampData.push(parseInt(ramp.cells[i].innerText)||0);
+    }
+    document.getElementById("chartContainer").style.display = "block";
+    let ctx = document.getElementById('trendChart').getContext('2d');
+    if(window.trendChartObj){ window.trendChartObj.destroy(); }
+    window.trendChartObj = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: weeksLabels,
+            datasets: [{
+                label: 'Cumulative Ramp-Up',
+                data: rampData,
+                fill: false,
+                borderColor: "#005bbb",
+                backgroundColor: "#005bbb",
+                pointStyle: 'circle',
+                pointRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Cumulative Ramp-Up Trend'
+                }
+            }
+        }
+    });
+}
+</script>
+</body>
+</html>
