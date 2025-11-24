@@ -6,28 +6,122 @@
 <style>
     body { font-family: Arial, sans-serif; background: white; color: #003366; padding: 20px;}
     h1 { text-align: center; color: #005bbb;}
-    table { width: 100%; border-collapse: collapse; margin-top: 25px; font-size: 15px; }
-    th { background: #005bbb; color: white; padding: 10px; border: 1px solid #004a99; }
-    td { border: 1px solid #005bbb; padding: 8px; text-align: center;}
-    input[type="number"] { width: 70px; padding: 5px; text-align: center; border: 1px solid #005bbb; border-radius: 5px; }
-    .yellow { background: #ffdd55; }
-    .green { background: #a8e6a1; font-weight: bold; }
-    .button { margin: 20px 10px 20px 0; display: inline-block; padding: 10px 20px; background: #005bbb; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; }
-    .rowtoggle { margin: 0 20px 0 0; }
-    #chartContainer { width: 98%; margin: 25px auto; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 15px;}
+    th { background: #005bbb; color: white; padding: 8px; border: 1px solid #004a99;}
+    td { border: 1px solid #005bbb; padding: 6px; text-align: center;}
+    input[type="number"] { width: 70px; padding: 5px; text-align: center; border: 1px solid #005bbb; border-radius: 5px;}
+    .yellow { background: #ffdd55;}
+    .green { background: #a8e6a1; font-weight: bold;}
+    .button { margin: 10px; padding: 9px 18px; background: #005bbb; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 15px;}
+    .export-btn { background: #0288D1; }
+    .rowtoggle { margin: 0 18px 0 0; }
+    .flex-wrap { display: flex; gap: 20px; align-items: flex-start; margin-top: 15px; min-height: 250px;}
+    @media(max-width: 850px) {
+        .flex-wrap { flex-direction: column; align-items: stretch; }
+        #chartContainer, .draggable-notes { margin-left: 0; margin-right: 0; }
+    }
+    #chartContainer { max-width: 415px; min-width:320px; height: 244px; margin:0; padding: 10px 10px 10px 10px;
+        box-sizing: border-box; background: #f6faff; border:2px solid #005bbb; border-radius:12px; display:flex; align-items: center; justify-content:center; }
+    #trendChart { width:384px !important; height:220px !important; }
+    .scenario-note { color: #B71C1C; font-size: 14px; font-style: italic; margin-bottom: 6px; display: none;}
+    .draggable-notes {
+        position: absolute;
+        top: 420px;
+        left: 45px;
+        background: #eef7ff;
+        border: 2px solid #38a1fa;
+        border-radius: 12px;
+        box-shadow: 0 6px 28px -8px #aaa;
+        z-index: 22;
+        min-width: 250px;
+        max-width: 420px;
+        padding: 4px;
+        cursor: move;
+        box-sizing: border-box;
+    }
+    .notes-content {
+        padding: 10px 16px 10px 16px;
+    }
+    .notes-header {
+        background: #38a1fa;
+        color: #fff;
+        font-weight: bold;
+        padding: 4px 8px;
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+        cursor: move;
+        letter-spacing: 1px;
+        font-size: 16px;
+        user-select: none;
+    }
+    #notesText { width: 100%; height: 70px; font-size: 15px; border-radius:6px; border: 1px solid #bbb; resize: vertical;}
+    #notesSaved { color: #005bbb; font-size: 13px; font-style: italic;}
+    .dropdown { position: relative; display: inline-block; }
+    .dropdown-content {
+        display: none;
+        position: absolute;
+        left: 0;
+        background-color: #f9f9f9;
+        min-width: 160px;
+        box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.07);
+        z-index: 1;
+        border-radius:6px;
+        border:1px solid #ddd;
+    }
+    .dropdown-content button {
+        color: #005bbb;
+        padding: 12px 18px;
+        text-align: left;
+        text-decoration: none;
+        display: block;
+        width: 100%;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 15px;
+    }
+    .dropdown-content button:hover {
+        background-color: #ddefff;
+    }
+    .dropdown.show .dropdown-content {
+        display: block;
+    }
+    /* Prevent draggable overlap with other content */
+    .draggable-notes.dragging { opacity:0.8; }
 </style>
-<!-- SheetJS for Excel export -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-<!-- Chart.js for trend chart -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 </head>
 <body>
 <h1>Volume Validation Throughput Calculator</h1>
-<button class="button" onclick="calculate()">Calculate</button>
-<button class="button" onclick="exportToExcel()">Export to Excel</button>
-<button class="button" onclick="drawTrendChart()">Draw Trend Chart</button>
 
-<!-- Row toggles -->
+<button class="button" onclick="calculate()">Calculate</button>
+
+<div style="margin:10px 0 3px 0;">
+    <label>
+        <input type="checkbox" id="whatIfScenario" onchange="calculate()">
+        <b>Simulate What-If scenario:</b> reduce parts by
+    </label>
+    <input type="number" id="whatIfPercent" min="0" max="100" value="30" style="width:60px;" onchange="calculate()">%
+    <span id="scenarioNote" class="scenario-note"></span>
+</div>
+
+<div id="exportBar">
+    <div class="dropdown" id="exportDropdown">
+        <button class="button export-btn" onclick="toggleDropdown(event)">
+            Export ▼
+        </button>
+        <div class="dropdown-content">
+            <button onclick="exportToExcel();hideDropdown();">Export to Excel</button>
+            <button onclick="exportToCSV();hideDropdown();">Export to CSV</button>
+            <button onclick="exportChartPNG();hideDropdown();">Export Chart PNG</button>
+        </div>
+    </div>
+    <button class="button export-btn" onclick="saveNotesAndCalculation()">Save Notes</button>
+    <button class="button export-btn" onclick="loadNotesAndCalculation()">Load Notes</button>
+</div>
+
 <div>
     <label class="rowtoggle">
         <input type="checkbox" id="togglePlatform" checked onchange="toggleRow(1)"> Show VV Platforms
@@ -46,7 +140,6 @@
 <table id="vvTable">
     <tr>
       <th>Work Week</th>
-      <!-- WW columns auto-generated -->
     </tr>
     <tr>
       <td><b>VV Platforms</b></td>
@@ -62,8 +155,18 @@
     </tr>
 </table>
 
-<div id="chartContainer" style="display:none">
-    <canvas id="trendChart"></canvas>
+<div class="flex-wrap" style="position:relative; min-height: 250px;">
+    <div id="chartContainer">
+        <canvas id="trendChart" width="384" height="220"></canvas>
+    </div>
+    <!-- Draggable Notes Block -->
+    <div id="notesBlock" class="draggable-notes">
+        <div class="notes-header" id="notesHeader">Notes</div>
+        <div class="notes-content">
+            <textarea id="notesText" placeholder="Enter your comments or calculation summary here..."></textarea>
+            <div id="notesSaved"></div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -87,20 +190,39 @@ window.onload = function () {
             rows[r].appendChild(cell);
         }
     }
-    calculate(); // Initialize chart and table
+    calculate();
+    drawTrendChart();
+    loadNotesAndCalculation();
+    makeNotesDraggable();
 };
 
 function calculate() {
+    const whatIf = document.getElementById('whatIfScenario').checked;
+    let percent = parseFloat(document.getElementById('whatIfPercent').value);
+    if (isNaN(percent) || percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    document.getElementById('whatIfPercent').value = percent;
+    let availablePercent = 100 - percent;
+
+    const scenarioNote = document.getElementById('scenarioNote');
+    scenarioNote.style.display = whatIf ? 'inline' : 'none';
+    scenarioNote.innerText = whatIf
+        ? `(What-If scenario ON: All test line calculations reflect ${availablePercent}% parts availability.)`
+        : '';
+
     const table = document.getElementById("vvTable");
     const maxTL = table.rows[2];
     const actualTL = table.rows[3];
     const ramp = table.rows[4];
     let cumulative = 0;
+    let lastValues = {maxArr:[], actualArr:[], rampArr:[]};
     for (let i = 1; i <= weeks; i++) {
         actualTL.cells[i].className = "";
         ramp.cells[i].className = "";
+
         let platforms = parseInt(document.getElementById("plat"+i).value) || 0;
         let max = platforms * 4 * 7;
+        if (whatIf) max = Math.floor(max * (availablePercent/100));
         maxTL.cells[i].innerText = max;
         let actual = Math.round(max * 0.6);
         actualTL.cells[i].innerText = actual;
@@ -109,7 +231,12 @@ function calculate() {
         ramp.cells[i].innerText = cumulative;
         ramp.cells[i].classList.add("yellow");
         if (actual >= 1400) actualTL.cells[i].classList.add("green");
+        lastValues.maxArr.push(max);
+        lastValues.actualArr.push(actual);
+        lastValues.rampArr.push(cumulative);
     }
+    window.latestCalculation = lastValues;
+    drawTrendChart();
 }
 
 function toggleRow(idx) {
@@ -121,7 +248,6 @@ function exportToExcel() {
     var table = document.getElementById("vvTable");
     var data = [];
     for(let i=0; i<table.rows.length; i++) {
-        // Only export visible rows
         if(table.rows[i].style.display === "none") continue;
         let row = [];
         for(let j=0; j<table.rows[i].cells.length; j++) {
@@ -140,20 +266,39 @@ function exportToExcel() {
     XLSX.utils.book_append_sheet(wb, ws, "VV Throughput");
     XLSX.writeFile(wb, "VV_Throughput.xlsx");
 }
-
-// Draw chart using Chart.js
+function exportToCSV() {
+    var table = document.getElementById("vvTable");
+    var csvRows = [];
+    for(let i=0; i<table.rows.length; i++) {
+        if(table.rows[i].style.display === "none") continue;
+        var row = Array.from(table.rows[i].cells).map(cell =>
+            cell.querySelector('input') ? cell.querySelector('input').value : cell.innerText
+        );
+        csvRows.push(row.join(","));
+    }
+    var csvContent = csvRows.join("\n");
+    var blob = new Blob([csvContent], { type: "text/csv" });
+    saveAs(blob, "VV_Throughput.csv");
+}
+function exportChartPNG() {
+    let chartCanvas = document.getElementById('trendChart');
+    chartCanvas.toBlob(function(blob) {
+        saveAs(blob, 'VV_TrendChart.png');
+    });
+}
+// Chart function
 function drawTrendChart() {
-    calculate(); // to refresh cumulative
     const ramp = document.getElementById('vvTable').rows[4];
     const weeksLabels = [];
     const rampData = [];
-    for(let i=1; i<=weeks; i++) {
-        weeksLabels.push("WW"+String(i).padStart(2,'0'));
-        rampData.push(parseInt(ramp.cells[i].innerText)||0);
+    for (let i = 1; i <= weeks; i++) {
+        weeksLabels.push("WW" + String(i).padStart(2, '0'));
+        rampData.push(parseInt(ramp.cells[i].innerText) || 0);
     }
-    document.getElementById("chartContainer").style.display = "block";
     let ctx = document.getElementById('trendChart').getContext('2d');
-    if(window.trendChartObj){ window.trendChartObj.destroy(); }
+    if (window.trendChartObj) {
+        window.trendChartObj.destroy();
+    }
     window.trendChartObj = new Chart(ctx, {
         type: 'line',
         data: {
@@ -165,19 +310,84 @@ function drawTrendChart() {
                 borderColor: "#005bbb",
                 backgroundColor: "#005bbb",
                 pointStyle: 'circle',
-                pointRadius: 5
+                pointRadius: 4
             }]
         },
         options: {
-            responsive: true,
+            responsive: false,
+            maintainAspectRatio: false,
             plugins: {
-                title: {
-                    display: true,
-                    text: 'Cumulative Ramp-Up Trend'
-                }
+                title: { display: true, text: 'Cumulative Ramp-Up Trend' }
             }
         }
     });
+}
+
+function saveNotesAndCalculation() {
+    let notes = document.getElementById("notesText").value;
+    let calculation = window.latestCalculation || {};
+    localStorage.setItem("VV_notes", notes);
+    localStorage.setItem("VV_results", JSON.stringify(calculation));
+    let now = new Date();
+    document.getElementById("notesSaved").innerText = "Notes & calculation saved: " + now.toLocaleString();
+}
+function loadNotesAndCalculation() {
+    document.getElementById("notesText").value = localStorage.getItem("VV_notes") || "";
+    let saved = localStorage.getItem("VV_results");
+    if (saved) {
+        document.getElementById("notesSaved").innerText = "Loaded last saved notes/calculation.";
+    } else {
+        document.getElementById("notesSaved").innerText = "";
+    }
+}
+
+// Export dropdown logic
+function toggleDropdown(e) {
+    e.stopPropagation();
+    document.getElementById("exportDropdown").classList.toggle("show");
+}
+function hideDropdown() {
+    document.getElementById("exportDropdown").classList.remove("show");
+}
+window.onclick = function(e) {
+    if (!e.target.closest('.dropdown')) {
+        hideDropdown();
+    }
+};
+
+// ---- Draggable Notes ----
+function makeNotesDraggable() {
+    const notesBlock = document.getElementById('notesBlock');
+    const header = document.getElementById('notesHeader');
+    let offsetX = 0, offsetY = 0, dragging = false;
+    let startX, startY;
+
+    header.onmousedown = function(e) {
+        dragging = true;
+        notesBlock.classList.add('dragging');
+        startX = e.clientX;
+        startY = e.clientY;
+        offsetX = notesBlock.offsetLeft;
+        offsetY = notesBlock.offsetTop;
+        document.onmousemove = onMouseMove;
+        document.onmouseup = onMouseUp;
+        e.preventDefault();
+    };
+    function onMouseMove(e) {
+        if (!dragging) return;
+        let newLeft = offsetX + e.clientX - startX;
+        let newTop = offsetY + e.clientY - startY;
+        if (newLeft < 0) newLeft = 0;
+        if (newTop < 0) newTop = 0;
+        notesBlock.style.left = newLeft + "px";
+        notesBlock.style.top = newTop + "px";
+    }
+    function onMouseUp() {
+        notesBlock.classList.remove('dragging');
+        dragging = false;
+        document.onmousemove = null;
+        document.onmouseup = null;
+    }
 }
 </script>
 </body>
