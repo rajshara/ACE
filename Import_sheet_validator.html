@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Import Sheet Validator (Config-SWCfg Mapping)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f8fc;
+            color: #222b40;
+            padding: 30px;
+        }
+        h2 {
+            color: #195aaf;
+        }
+        label {
+            color: #195aaf;
+            font-weight: bold;
+        }
+        input[type="text"], textarea {
+            width: 340px;
+            padding: 4px;
+            border: 1px solid #b4d1ff;
+            border-radius: 4px;
+            background-color: #fff;
+            color: #1d3359;
+            margin-top: 4px;
+        }
+        textarea {
+            height: 90px;
+            resize: vertical;
+        }
+        input[type="file"] {
+            border: none;
+            background-color: #fff;
+            padding: 4px;
+            color: #195aaf;
+        }
+        button {
+            background-color: #195aaf;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 22px;
+            font-size: 1em;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 14px;
+        }
+        button:hover {
+            background-color: #3576d7;
+        }
+        #output {
+            margin-top: 23px;
+            background: #e3edfc;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1.5px solid #b4d1ff;
+            color: #1d3359;
+        }
+        .error-row {
+            color: #1560b6;
+            background-color: #eff6ff;
+        }
+        table {
+            border-collapse: collapse;
+            width: 98%;
+            margin: 15px 0;
+        }
+        th, td {
+            border: 1px solid #b4d1ff;
+            padding: 8px 5px;
+            text-align: left;
+            background: #fff;
+        }
+        th {
+            background-color: #d4e6fc;
+            color: #195aaf;
+        }
+        .valid-msg {
+            color: #1560b6;
+            font-weight: bold;
+            background-color: #e0f2fe;
+            border-radius: 5px;
+            padding: 7px;
+            display: inline-block;
+        }
+        .invalid-msg {
+            color: #ff2e2e;
+            font-weight: bold;
+            background-color: #fff6f6;
+            border-radius: 5px;
+            padding: 7px;
+            display: inline-block;
+        }
+        .help-text {
+            font-size: 0.95em;
+            margin-bottom: 10px;
+            color: #3576d7;
+        }
+    </style>
+</head>
+<body>
+    <h2>Import Sheet Validator</h2>
+    <p>Upload your import sheet <b>CSV or XLSX</b>:</p>
+    <input type="file" id="sheet" accept=".csv,.xlsx">
+    <br><br>
+
+    <label>Enter Config-SWConfig Mapping:</label><br>
+    <textarea id="mapping" placeholder="e.g.&#10;CAF4_S2: A,B&#10;CAF5_S2: A"></textarea><br>
+
+    <button onclick="validateSheet()">Validate</button>
+    <div id="output"></div>
+
+    <!-- PapaParse for CSVs -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <!-- SheetJS for XLSX -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+    function parseMapping(mapText) {
+        let mapping = {};
+        let lines = mapText.split('\n');
+        for (let line of lines) {
+            if (!line.trim()) continue;
+            let parts = line.split(':');
+            if (parts.length != 2) continue;
+            let cfg = parts[0].trim();
+            let swcfgs = parts[1].split(',').map(s => s.trim()).filter(s => s);
+            if (cfg && swcfgs.length) mapping[cfg] = swcfgs;
+        }
+        return mapping;
+    }
+
+    function validateSheet() {
+        let fileInput = document.getElementById('sheet');
+        let output = document.getElementById('output');
+        output.innerHTML = "";
+
+        if (!fileInput.files.length) {
+            output.innerHTML = "<span class='invalid-msg'>Please upload a CSV or XLSX file.</span>";
+            return;
+        }
+        let mappingText = document.getElementById('mapping').value;
+        let mapping = parseMapping(mappingText);
+        if (Object.keys(mapping).length === 0) {
+            output.innerHTML = "<span class='invalid-msg'>Please enter at least one valid mapping.</span>";
+            return;
+        }
+
+        let file = fileInput.files[0];
+        let fileName = file.name.toLowerCase();
+
+        if (fileName.endsWith('.csv')) {
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    handleValidation(results.data, mapping, output);
+                }
+            });
+        } else if (fileName.endsWith('.xlsx')) {
+            let reader = new FileReader();
+            reader.onload = function(e) {
+                let data = new Uint8Array(e.target.result);
+                let workbook = XLSX.read(data, {type: 'array'});
+                let firstSheet = workbook.SheetNames[0];
+                let sheetJson = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], {defval: ''});
+                handleValidation(sheetJson, mapping, output);
+            }
+            reader.onerror = function() {
+                output.innerHTML = "<span class='invalid-msg'>Error reading XLSX file.</span>";
+            }
+            reader.readAsArrayBuffer(file);
+        } else {
+            output.innerHTML = "<span class='invalid-msg'>Unsupported file type. Please upload a CSV or XLSX file.</span>";
+        }
+    }
+
+    function handleValidation(data, mapping, output) {
+        let invalidRows = [];
+        let cfgCol = "ConfigName";
+        let swcfgCol = "SoftwareConfig";
+        if (!data[0] || !(cfgCol in data[0]) || !(swcfgCol in data[0])) {
+            output.innerHTML = "<span class='invalid-msg'>Error: 'ConfigName' and 'SoftwareConfig' columns must exist in the sheet.</span>";
+            return;
+        }
+        data.forEach((row, idx) => {
+            let validSwCfgList = mapping[row[cfgCol]];
+            if (!validSwCfgList || !validSwCfgList.includes(row[swcfgCol])) {
+                invalidRows.push({
+                    row: idx+2,
+                    config: row[cfgCol],
+                    swcfg: row[swcfgCol],
+                    allowed: validSwCfgList ? validSwCfgList.join(', ') : 'Not mapped'
+                });
+            }
+        });
+
+        let resultHtml = `<p>Sheet rows checked: ${data.length}</p>`;
+        if (invalidRows.length) {
+            resultHtml += `<p class='invalid-msg'>Invalid taggings (${invalidRows.length}):</p>`;
+            resultHtml += `<table><tr><th>Row</th><th>ConfigName</th><th>SoftwareConfig</th><th>Allowed SWConfigs</th></tr>`;
+            invalidRows.forEach(r=>{
+                resultHtml += `<tr class="error-row"><td>${r.row}</td><td>${r.config}</td><td>${r.swcfg}</td><td>${r.allowed}</td></tr>`;
+            });
+            resultHtml += `</table>`;
+        } else {
+            resultHtml += `<p class='valid-msg'>All testlines are correctly tagged!</p>`;
+        }
+        output.innerHTML = resultHtml;
+    }
+    </script>
+</body>
+</html>
