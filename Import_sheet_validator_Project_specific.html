@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Import Sheet Validator (Config-SWCfg Mapping)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            min-height: 100vh;
+            background: linear-gradient(120deg, #e5efff 0%, #f6faff 100%);
+            color: #1c2f4c;
+        }
+        body {
+            box-sizing: border-box;
+        }
+        .container {
+            width: 100%;
+            max-width: 520px;
+            margin: 40px auto 0 auto;
+            padding: 30px 18px 32px 18px;
+            background: #fff;
+            border: 1.5px solid #b4d1ff;
+            border-radius: 14px;
+            box-shadow: 0 6px 36px rgba(33, 87, 158, 0.12);
+        }
+        h2 {
+            text-align: center;
+            color: #2366b7;
+            margin-top: 0;
+            margin-bottom: 28px;
+            font-size: 2em;
+            font-weight: 700;
+            letter-spacing: 0.6px;
+            width: 100%;
+        }
+        label {
+            color: #195aaf;
+            font-weight: 600;
+            margin-top: 18px;
+            margin-bottom: 8px;
+            display: block;
+            font-size: 1.1em;
+        }
+        select, textarea, input[type="file"], button {
+            margin-bottom: 22px;
+            font-size: 1.1em;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        select {
+            padding: 12px 12px;
+            border-radius: 8px;
+            border: 1.5px solid #88bfff;
+            background: #fafdff;
+            color: #195aaf;
+            transition: border-color 0.2s;
+            margin-bottom: 24px;
+        }
+        select:focus {
+            border: 1.7px solid #2366b7;
+            background: #e6f0ff;
+            outline: none;
+        }
+        textarea {
+            font-family: 'Consolas', 'Menlo', monospace;
+            height: 110px;
+            background: #fafdff;
+            color: #174a7c;
+            border: 1.5px solid #88bfff;
+            border-radius: 9px;
+            transition: border-color 0.2s;
+            resize: vertical;
+            font-size: 1.07em;
+        }
+        textarea:focus {
+            border-color: #2366b7;
+            background: #f0f7ff;
+            outline: none;
+        }
+        input[type="file"] {
+            background: #fafdff;
+            color: #17509b;
+            border-radius: 7px;
+            font-size: 1em;
+            padding: 10px 2px;
+            border: 1.5px solid #b4d1ff;
+        }
+        button {
+            background: linear-gradient(90deg, #195aaf 70%, #37aefb 130%);
+            color: #fff;
+            border: none;
+            border-radius: 7px;
+            padding: 16px 0;
+            font-size: 1.12em;
+            font-weight: bold;
+            letter-spacing: 0.4px;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(33, 87, 158, 0.15);
+            transition: background 0.20s;
+            margin-bottom: 15px;
+            width: 100%;
+        }
+        button:hover {
+            background: linear-gradient(90deg, #2574cf 60%, #4eb6ff 130%);
+        }
+        #output {
+            margin-top: 10px;
+            background: #f4f9ff;
+            padding: 24px;
+            border-radius: 8px;
+            border: 1.5px solid #b4d1ff;
+            color: #1d3359;
+            font-size: 1.05em;
+            box-shadow: 0 4px 18px rgba(33, 87, 158, 0.07);
+            width: 100%;
+            box-sizing: border-box;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 18px 0;
+            background: #ffffff;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        th, td {
+            border: 1px solid #b4d1ff;
+            padding: 12px 8px;
+            text-align: left;
+            background: #ffffff;
+        }
+        th {
+            background-color: #e0f1ff;
+            color: #195aaf;
+            font-weight: 600;
+        }
+        .error-row {
+            color: #195aaf;
+            background-color: #eff6ff;
+        }
+        .valid-msg {
+            color: #1462c0;
+            font-weight: bold;
+            background-color: #e0f2fe;
+            border-radius: 6px;
+            padding: 9px 22px;
+            border: 1px solid #67baff;
+            display: inline-block;
+        }
+        .invalid-msg {
+            color: #f22121;
+            font-weight: bold;
+            background-color: #fff6f8;
+            border-radius: 6px;
+            border: 1px solid #fab8b8;
+            padding: 9px 22px;
+            display: inline-block;
+        }
+        @media (max-width: 680px) {
+            .container { max-width: 98vw; padding: 12px 2vw 20px 2vw; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Import Sheet Validator</h2>
+        <label>Upload your import sheet <b>CSV or XLSX</b>:</label>
+        <input type="file" id="sheet" accept=".csv,.xlsx">
+
+        <label>Select Project:</label>
+        <select id="project" onchange="loadProjectConfigs()">
+            <option value="">-- Select a Project --</option>
+            <option value="CWF">CWF</option>
+            <option value="DMR">DMR</option>
+        </select>
+
+        <label>Config-SWConfig Mapping (auto-filled):</label>
+        <textarea id="mapping" readonly></textarea>
+        <button onclick="validateSheet()">Validate</button>
+        <div id="output"></div>
+    </div>
+
+    <!-- PapaParse for CSVs -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <!-- SheetJS for XLSX -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+    // Fixed Config/SWCfg data for both projects
+    const PROJECT_CFGS = {
+        CWF: {
+            CAF1_S1: ['A', 'B', 'C'],
+            CAF2_S1: ['A', 'B', 'C'],
+            CAF6_S1: ['A', 'B'],
+            CAF5_S2: ['A', 'B', 'C'],
+            CAF4_S2: ['A', 'B', 'D', 'E']
+        },
+        DMR: {
+            FDU1: ['A', 'B', 'C'],
+            FDU2: ['A', 'B', 'C'],
+            FDU3: ['A', 'B', 'C'],
+            FDU4: ['A', 'B', 'C'],
+            FDU5: ['A', 'B', 'C'],
+            FDU6: ['A', 'B', 'C'],
+            FDU7: ['A', 'B', 'C'],
+            FDM200: ['A', 'B', 'C']
+        }
+    };
+
+    function loadProjectConfigs() {
+        const project = document.getElementById('project').value;
+        const mappingArea = document.getElementById('mapping');
+        if (project && PROJECT_CFGS[project]) {
+            // Fill mapping as text
+            let lines = [];
+            for (let cfg in PROJECT_CFGS[project]) {
+                lines.push(cfg + ': ' + PROJECT_CFGS[project][cfg].join(','));
+            }
+            mappingArea.value = lines.join('\n');
+            mappingArea.readOnly = true;
+        } else {
+            mappingArea.value = '';
+            mappingArea.readOnly = false;
+        }
+    }
+
+    function parseMapping(mapText) {
+        let mapping = {};
+        let lines = mapText.split('\n');
+        for (let line of lines) {
+            if (!line.trim()) continue;
+            let parts = line.split(':');
+            if (parts.length != 2) continue;
+            let cfg = parts[0].trim();
+            let swcfgs = parts[1].split(',').map(s => s.trim()).filter(s => s);
+            if (cfg && swcfgs.length) mapping[cfg] = swcfgs;
+        }
+        return mapping;
+    }
+
+    function validateSheet() {
+        let fileInput = document.getElementById('sheet');
+        let output = document.getElementById('output');
+        output.innerHTML = "";
+
+        if (!fileInput.files.length) {
+            output.innerHTML = "<span class='invalid-msg'>Please upload a CSV or XLSX file.</span>";
+            return;
+        }
+        let mappingText = document.getElementById('mapping').value;
+        let mapping = parseMapping(mappingText);
+        if (Object.keys(mapping).length === 0) {
+            output.innerHTML = "<span class='invalid-msg'>Please select a project or enter mapping.</span>";
+            return;
+        }
+
+        let file = fileInput.files[0];
+        let fileName = file.name.toLowerCase();
+
+        if (fileName.endsWith('.csv')) {
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    handleValidation(results.data, mapping, output);
+                }
+            });
+        } else if (fileName.endsWith('.xlsx')) {
+            let reader = new FileReader();
+            reader.onload = function(e) {
+                let data = new Uint8Array(e.target.result);
+                let workbook = XLSX.read(data, {type: 'array'});
+                let firstSheet = workbook.SheetNames[0];
+                let sheetJson = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], {defval: ''});
+                handleValidation(sheetJson, mapping, output);
+            }
+            reader.onerror = function() {
+                output.innerHTML = "<span class='invalid-msg'>Error reading XLSX file.</span>";
+            }
+            reader.readAsArrayBuffer(file);
+        } else {
+            output.innerHTML = "<span class='invalid-msg'>Unsupported file type. Please upload a CSV or XLSX file.</span>";
+        }
+    }
+
+    function handleValidation(data, mapping, output) {
+        let invalidRows = [];
+        let cfgCol = "ConfigName";
+        let swcfgCol = "SoftwareConfig";
+        if (!data[0] || !(cfgCol in data[0]) || !(swcfgCol in data[0])) {
+            output.innerHTML = "<span class='invalid-msg'>Error: 'ConfigName' and 'SoftwareConfig' columns must exist in the sheet.</span>";
+            return;
+        }
+        data.forEach((row, idx) => {
+            let validSwCfgList = mapping[row[cfgCol]];
+            if (!validSwCfgList || !validSwCfgList.includes(row[swcfgCol])) {
+                invalidRows.push({
+                    row: idx+2,
+                    config: row[cfgCol],
+                    swcfg: row[swcfgCol],
+                    allowed: validSwCfgList ? validSwCfgList.join(', ') : 'Not mapped'
+                });
+            }
+        });
+
+        let resultHtml = `<p>Sheet rows checked: ${data.length}</p>`;
+        if (invalidRows.length) {
+            resultHtml += `<p class='invalid-msg'>Invalid taggings (${invalidRows.length}):</p>`;
+            resultHtml += `<table><tr><th>Row</th><th>ConfigName</th><th>SoftwareConfig</th><th>Allowed SWConfigs</th></tr>`;
+            invalidRows.forEach(r=>{
+                resultHtml += `<tr class="error-row"><td>${r.row}</td><td>${r.config}</td><td>${r.swcfg}</td><td>${r.allowed}</td></tr>`;
+            });
+            resultHtml += `</table>`;
+        } else {
+            resultHtml += `<p class='valid-msg'>All testlines are correctly tagged!</p>`;
+        }
+        output.innerHTML = resultHtml;
+    }
+    </script>
+</body>
+</html>
