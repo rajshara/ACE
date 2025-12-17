@@ -141,6 +141,14 @@
             color: #195aaf;
             background-color: #eff6ff;
         }
+        .syntax-row {
+            color: #d4006e;
+            background-color: #fffafd;
+        }
+        .bios-row {
+            color: #d4006e;
+            background-color: #fffafd;
+        }
         .valid-msg {
             color: #1462c0;
             font-weight: bold;
@@ -188,7 +196,6 @@
     <!-- SheetJS for XLSX -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script>
-    // Fixed Config/SWCfg data for both projects
     const PROJECT_CFGS = {
         CWF: {
             CAF1_S1: ['A', 'B', 'C'],
@@ -213,7 +220,6 @@
         const project = document.getElementById('project').value;
         const mappingArea = document.getElementById('mapping');
         if (project && PROJECT_CFGS[project]) {
-            // Fill mapping as text
             let lines = [];
             for (let cfg in PROJECT_CFGS[project]) {
                 lines.push(cfg + ': ' + PROJECT_CFGS[project][cfg].join(','));
@@ -287,12 +293,18 @@
 
     function handleValidation(data, mapping, output) {
         let invalidRows = [];
+        let syntaxRows = [];
+        let biosRows = [];
         let cfgCol = "ConfigName";
         let swcfgCol = "SoftwareConfig";
+        let reqElemCol = "RequiredSystemElement";
+        let biosCol = "Parameter.custombiosargs";
+
         if (!data[0] || !(cfgCol in data[0]) || !(swcfgCol in data[0])) {
             output.innerHTML = "<span class='invalid-msg'>Error: 'ConfigName' and 'SoftwareConfig' columns must exist in the sheet.</span>";
             return;
         }
+
         data.forEach((row, idx) => {
             let validSwCfgList = mapping[row[cfgCol]];
             if (!validSwCfgList || !validSwCfgList.includes(row[swcfgCol])) {
@@ -303,18 +315,85 @@
                     allowed: validSwCfgList ? validSwCfgList.join(', ') : 'Not mapped'
                 });
             }
+
+            // RequiredSystemElement: leading space or all spaces
+            if (reqElemCol in row) {
+                let rse = row[reqElemCol];
+                if ((typeof rse === 'string' && rse.length > 0 && rse[0] === ' ')
+                    || (typeof rse === 'string' && rse.trim() === '' && rse.length > 0)) {
+                    syntaxRows.push({
+                        row: idx+2,
+                        value: rse,
+                        msg: 'Leading space or only spaces detected'
+                    });
+                }
+            }
+
+            // BIOS arg check: each bios knob must start with --biosstr
+            if (biosCol in row) {
+                let argstr = row[biosCol];
+                if (typeof argstr === 'string' && argstr.trim().length) {
+                    // Remove any sequences of spaces between entries
+                    let tokens = argstr.match(/--biosstr\s*["“][^"”]+["”]/g);
+                    let isValid = true;
+                    let invalidText = "";
+                    if (!tokens) {
+                        isValid = false;
+                        invalidText = argstr;
+                    } else {
+                        // Check that the joined tokens, with spaces, covers the string (except leading/trailing)
+                        let reconstructed = tokens.join(' ').replace(/\s+/, ' ').trim();
+                        let original = argstr.replace(/\s+/, ' ').trim();
+                        if (reconstructed.length !== original.length) {
+                            isValid = false;
+                            invalidText = argstr;
+                        }
+                    }
+                    if (!isValid) {
+                        biosRows.push({
+                            row: idx+2,
+                            value: argstr,
+                            msg: "Every knob/value must begin with --biosstr"
+                        });
+                    }
+                }
+            }
         });
 
         let resultHtml = `<p>Sheet rows checked: ${data.length}</p>`;
+
+        // BIOS knob format errors
+        if (biosRows.length) {
+            resultHtml += `<p class='invalid-msg'>Parameter.custombiosargs syntax errors (${biosRows.length}):</p>`;
+            resultHtml += `<table><tr><th>Row</th><th>Parameter.custombiosargs</th><th>Error</th></tr>`;
+            biosRows.forEach(r=>{
+                resultHtml += `<tr class="bios-row"><td>${r.row}</td><td><code>${r.value}</code></td><td>${r.msg}</td></tr>`;
+            });
+            resultHtml += `</table>`;
+        }
+
+        // RequiredSystemElement errors
+        if (syntaxRows.length) {
+            resultHtml += `<p class='invalid-msg'>RequiredSystemElement syntax errors (${syntaxRows.length}):</p>`;
+            resultHtml += `<table><tr><th>Row</th><th>RequiredSystemElement</th><th>Error</th></tr>`;
+            syntaxRows.forEach(r=>{
+                resultHtml += `<tr class="syntax-row"><td>${r.row}</td><td><code>${JSON.stringify(r.value)}</code></td><td>${r.msg}</td></tr>`;
+            });
+            resultHtml += `</table>`;
+        }
+
+        // Config/SW Config mapping errors
         if (invalidRows.length) {
-            resultHtml += `<p class='invalid-msg'>Invalid taggings (${invalidRows.length}):</p>`;
+            resultHtml += `<p class='invalid-msg'>Invalid Config/SW Config mapping (${invalidRows.length}):</p>`;
             resultHtml += `<table><tr><th>Row</th><th>ConfigName</th><th>SoftwareConfig</th><th>Allowed SWConfigs</th></tr>`;
             invalidRows.forEach(r=>{
                 resultHtml += `<tr class="error-row"><td>${r.row}</td><td>${r.config}</td><td>${r.swcfg}</td><td>${r.allowed}</td></tr>`;
             });
             resultHtml += `</table>`;
-        } else {
-            resultHtml += `<p class='valid-msg'>All testlines are correctly tagged!</p>`;
+        }
+
+        if (!invalidRows.length && !syntaxRows.length && !biosRows.length) {
+            resultHtml += `<p class='valid-msg'>All testlines are correctly tagged and all RequiredSystemElement and Parameter.custombiosargs syntax is valid!</p>`;
         }
         output.innerHTML = resultHtml;
     }
