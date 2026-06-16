@@ -237,6 +237,13 @@
         }
     }
 
+    // BIOS knob prefixes allowed per project (a knob may start with any of these)
+    const PROJECT_BIOS_PREFIX = {
+        CWF: ['--biosstr'],
+        'DMR_AP:A0': ['--bios_workaround_str', '--bios_override_str'],
+        'DMR_AP:B0': ['--bios_workaround_str', '--bios_override_str']
+    };
+
     function parseMapping(mapText) {
         let mapping = {};
         let lines = mapText.split('\n');
@@ -267,6 +274,9 @@
             return;
         }
 
+        let project = document.getElementById('project').value;
+        let biosPrefixes = PROJECT_BIOS_PREFIX[project] || ['--biosstr'];
+
         let file = fileInput.files[0];
         let fileName = file.name.toLowerCase();
 
@@ -275,7 +285,7 @@
                 header: true,
                 skipEmptyLines: true,
                 complete: function(results) {
-                    handleValidation(results.data, mapping, output);
+                    handleValidation(results.data, mapping, output, biosPrefixes);
                 }
             });
         } else if (fileName.endsWith('.xlsx')) {
@@ -285,7 +295,7 @@
                 let workbook = XLSX.read(data, {type: 'array'});
                 let firstSheet = workbook.SheetNames[0];
                 let sheetJson = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], {defval: ''});
-                handleValidation(sheetJson, mapping, output);
+                handleValidation(sheetJson, mapping, output, biosPrefixes);
             }
             reader.onerror = function() {
                 output.innerHTML = "<span class='invalid-msg'>Error reading XLSX file.</span>";
@@ -305,7 +315,78 @@
             .replace(/'/g, '&#39;');
     }
 
-    function handleValidation(data, mapping, output) {
+    // Inspect a Parameter.custombiosargs string and return a specific reason
+    // for failure, or null if it is valid. Detects missing spaces, wrong/typo
+    // prefixes, missing/unbalanced quotes, smart quotes, and stray text.
+    function diagnoseBiosArgs(argstr, prefixes) {
+        let s = argstr;
+
+        // Flag curly/smart quotes (common copy-paste typo from Word/Excel)
+        if (/[“”]/.test(s)) {
+            return 'Smart/curly quotes (“ ”) detected. Use straight double quotes (").';
+        }
+
+        // Locate every option-style token (e.g. --bios_override_str, --biosstr)
+        let optRegex = /--[A-Za-z0-9_]+/g;
+        let opts = [];
+        let m;
+        while ((m = optRegex.exec(s)) !== null) {
+            opts.push({ name: m[0], index: m.index });
+        }
+
+        if (opts.length === 0) {
+            return 'No BIOS knob prefix found. Each entry must begin with ' + prefixes.join(' or ') + '.';
+        }
+
+        for (let i = 0; i < opts.length; i++) {
+            let opt = opts[i];
+
+            // Wrong or misspelled prefix
+            if (!prefixes.includes(opt.name)) {
+                return 'Unknown or misspelled prefix "' + opt.name + '". Expected ' + prefixes.join(' or ') + '.';
+            }
+
+            if (i === 0) {
+                // Stray text before the first knob
+                let before = s.slice(0, opt.index).trim();
+                if (before.length) {
+                    return 'Unexpected text before the first knob: "' + before + '".';
+                }
+            } else {
+                // Missing space between this knob and the previous value
+                let prevChar = s[opt.index - 1];
+                if (prevChar !== ' ' && prevChar !== '\t') {
+                    return 'Missing space before "' + opt.name + '" (found "' + prevChar + opt.name + '"). Add a space between entries.';
+                }
+            }
+
+            // Value must immediately follow as a quoted string
+            let after = s.slice(opt.index + opt.name.length).replace(/^[ \t]*/, '');
+            if (after[0] !== '"') {
+                return 'Value after "' + opt.name + '" must be wrapped in double quotes (e.g. ' + opt.name + ' "Knob=Value").';
+            }
+            if (!/^"[^"]+"/.test(after)) {
+                return 'Missing or unbalanced closing quote after "' + opt.name + '".';
+            }
+        }
+
+        // Final structural check: the valid tokens must cover the whole string
+        let escapedPrefixes = prefixes.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        let tokenRegex = new RegExp('(?:' + escapedPrefixes.join('|') + ')\\s*"[^"]+"', 'g');
+        let tokens = s.match(tokenRegex);
+        if (!tokens) {
+            return 'Could not parse any valid knob/value entries.';
+        }
+        let reconstructed = tokens.join(' ').replace(/\s+/g, ' ').trim();
+        let original = s.replace(/\s+/g, ' ').trim();
+        if (reconstructed.length !== original.length) {
+            return 'Stray characters or extra text found between entries. Check for missing spaces, extra quotes, or leftover text.';
+        }
+
+        return null;
+    }
+
+    function handleValidation(data, mapping, output, biosPrefixes) {
         let invalidRows = [];
         let syntaxRows = [];
         let biosRows = [];
@@ -313,6 +394,7 @@
         let swcfgCol = "SoftwareConfig";
         let reqElemCol = "RequiredSystemElement";
         let biosCol = "Parameter.custombiosargs";
+        let prefixes = (biosPrefixes && biosPrefixes.length) ? biosPrefixes : ['--biosstr'];
 
         if (!data[0] || !(cfgCol in data[0]) || !(swcfgCol in data[0])) {
             output.innerHTML = "<span class='invalid-msg'>Error: 'ConfigName' and 'SoftwareConfig' columns must exist in the sheet.</span>";
@@ -343,28 +425,16 @@
                 }
             }
 
-            // BIOS arg check: each bios knob must start with --biosstr
+            // BIOS arg check: each bios knob must start with the project's prefix
             if (biosCol in row) {
                 let argstr = row[biosCol];
                 if (typeof argstr === 'string' && argstr.trim().length) {
-                    // Remove any sequences of spaces between entries
-                    let tokens = argstr.match(/--biosstr\s*["“][^"”]+["”]/g);
-                    let isValid = true;
-                    if (!tokens) {
-                        isValid = false;
-                    } else {
-                        // Check that the joined tokens, with spaces, covers the string (except leading/trailing)
-                        let reconstructed = tokens.join(' ').replace(/\s+/g, ' ').trim();
-                        let original = argstr.replace(/\s+/g, ' ').trim();
-                        if (reconstructed.length !== original.length) {
-                            isValid = false;
-                        }
-                    }
-                    if (!isValid) {
+                    let reason = diagnoseBiosArgs(argstr, prefixes);
+                    if (reason) {
                         biosRows.push({
                             row: idx+2,
                             value: argstr,
-                            msg: "Every knob/value must begin with --biosstr"
+                            msg: reason
                         });
                     }
                 }
