@@ -182,7 +182,8 @@
         <select id="project" onchange="loadProjectConfigs()">
             <option value="">-- Select a Project --</option>
             <option value="CWF">CWF</option>
-            <option value="DMR">DMR</option>
+            <option value="DMR_AP:A0">DMR_AP:A0</option>
+            <option value="DMR_AP:B0">DMR_AP:B0</option>
         </select>
 
         <label>Config-SWConfig Mapping (auto-filled):</label>
@@ -204,7 +205,7 @@
             CAF5_S2: ['A', 'B', 'C'],
             CAF4_S2: ['A', 'B', 'D', 'E']
         },
-        DMR: {
+        'DMR_AP:A0': {
             FDU1: ['A', 'B', 'C'],
             FDU2: ['A', 'B', 'C'],
             FDU3: ['A', 'B', 'C'],
@@ -213,6 +214,10 @@
             FDU6: ['A', 'B', 'C'],
             FDU7: ['A', 'B', 'C'],
             FDM200: ['A', 'B', 'C']
+        },
+        'DMR_AP:B0': {
+            FDA1: ['A', 'B', 'C'],
+            FDA2: ['A', 'B', 'C']
         }
     };
 
@@ -237,10 +242,10 @@
         let lines = mapText.split('\n');
         for (let line of lines) {
             if (!line.trim()) continue;
-            let parts = line.split(':');
-            if (parts.length != 2) continue;
-            let cfg = parts[0].trim();
-            let swcfgs = parts[1].split(',').map(s => s.trim()).filter(s => s);
+            let idx = line.indexOf(':');
+            if (idx === -1) continue;
+            let cfg = line.slice(0, idx).trim();
+            let swcfgs = line.slice(idx + 1).split(',').map(s => s.trim()).filter(s => s);
             if (cfg && swcfgs.length) mapping[cfg] = swcfgs;
         }
         return mapping;
@@ -291,6 +296,15 @@
         }
     }
 
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     function handleValidation(data, mapping, output) {
         let invalidRows = [];
         let syntaxRows = [];
@@ -336,17 +350,14 @@
                     // Remove any sequences of spaces between entries
                     let tokens = argstr.match(/--biosstr\s*["“][^"”]+["”]/g);
                     let isValid = true;
-                    let invalidText = "";
                     if (!tokens) {
                         isValid = false;
-                        invalidText = argstr;
                     } else {
                         // Check that the joined tokens, with spaces, covers the string (except leading/trailing)
-                        let reconstructed = tokens.join(' ').replace(/\s+/, ' ').trim();
-                        let original = argstr.replace(/\s+/, ' ').trim();
+                        let reconstructed = tokens.join(' ').replace(/\s+/g, ' ').trim();
+                        let original = argstr.replace(/\s+/g, ' ').trim();
                         if (reconstructed.length !== original.length) {
                             isValid = false;
-                            invalidText = argstr;
                         }
                     }
                     if (!isValid) {
@@ -367,7 +378,7 @@
             resultHtml += `<p class='invalid-msg'>Parameter.custombiosargs syntax errors (${biosRows.length}):</p>`;
             resultHtml += `<table><tr><th>Row</th><th>Parameter.custombiosargs</th><th>Error</th></tr>`;
             biosRows.forEach(r=>{
-                resultHtml += `<tr class="bios-row"><td>${r.row}</td><td><code>${r.value}</code></td><td>${r.msg}</td></tr>`;
+                resultHtml += `<tr class="bios-row"><td>${r.row}</td><td><code>${escapeHtml(r.value)}</code></td><td>${r.msg}</td></tr>`;
             });
             resultHtml += `</table>`;
         }
@@ -377,7 +388,7 @@
             resultHtml += `<p class='invalid-msg'>RequiredSystemElement syntax errors (${syntaxRows.length}):</p>`;
             resultHtml += `<table><tr><th>Row</th><th>RequiredSystemElement</th><th>Error</th></tr>`;
             syntaxRows.forEach(r=>{
-                resultHtml += `<tr class="syntax-row"><td>${r.row}</td><td><code>${JSON.stringify(r.value)}</code></td><td>${r.msg}</td></tr>`;
+                resultHtml += `<tr class="syntax-row"><td>${r.row}</td><td><code>${escapeHtml(JSON.stringify(r.value))}</code></td><td>${r.msg}</td></tr>`;
             });
             resultHtml += `</table>`;
         }
@@ -387,7 +398,7 @@
             resultHtml += `<p class='invalid-msg'>Invalid Config/SW Config mapping (${invalidRows.length}):</p>`;
             resultHtml += `<table><tr><th>Row</th><th>ConfigName</th><th>SoftwareConfig</th><th>Allowed SWConfigs</th></tr>`;
             invalidRows.forEach(r=>{
-                resultHtml += `<tr class="error-row"><td>${r.row}</td><td>${r.config}</td><td>${r.swcfg}</td><td>${r.allowed}</td></tr>`;
+                resultHtml += `<tr class="error-row"><td>${r.row}</td><td>${escapeHtml(r.config)}</td><td>${escapeHtml(r.swcfg)}</td><td>${escapeHtml(r.allowed)}</td></tr>`;
             });
             resultHtml += `</table>`;
         }
